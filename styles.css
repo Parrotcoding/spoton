@@ -1,4 +1,24 @@
 /* styles.css */
-/* keep the map tall enough even on tiny screens */
 html, body, #map { height: 100%; }
-#map             { min-height: 50vh; }
+#map             { min-height: 300px; }
+
+/* category chip */
+.chip {
+  @apply px-3 py-1 rounded-full text-sm border border-gray-300 bg-gray-50
+          hover:bg-blue-50 transition cursor-pointer;
+}
+.chip--active {
+  @apply bg-blue-600 text-white border-blue-600;
+}
+
+/* list rows */
+.list-row {
+  @apply px-4 py-2 border-b cursor-pointer hover:bg-gray-100 transition;
+}
+.hidden { display: none; }
+
+/* nicer thin scrollbar (Chromium/WebKit) */
+#places-list::-webkit-scrollbar     { width: 6px; }
+#places-list::-webkit-scrollbar-thumb {
+  background: #d1d5db; border-radius: 3px;
+}
