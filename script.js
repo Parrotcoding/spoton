@@ -1,128 +1,160 @@
 // script.js
-/* ---------- config ---------- */
+/* ---------- category config ---------- */
 const FILTERS = {
-  all:      {label:'All',         overpass:''},
-  restaurant:{label:'Restaurants',overpass:'["amenity"="restaurant"]'},
-  cafe:     {label:'Cafes',       overpass:'["amenity"="cafe"]'},
-  bar:      {label:'Bars',        overpass:'["amenity"="bar"]'},
-  park:     {label:'Parks',       overpass:'["leisure"="park"]'},
-  shopping_mall:{label:'Shopping',overpass:'["shop"="mall"]'},
-  lodging:  {label:'Hotels',      overpass:'["tourism"="hotel"]'},
-  gym:      {label:'Gyms',        overpass:'["leisure"="fitness_centre"]'}
+  all:          { label: 'All',         overpass: '' },
+  restaurant:   { label: 'Restaurants', overpass: '["amenity"="restaurant"]' },
+  cafe:         { label: 'Cafes',       overpass: '["amenity"="cafe"]' },
+  bar:          { label: 'Bars',        overpass: '["amenity"="bar"]' },
+  park:         { label: 'Parks',       overpass: '["leisure"="park"]' },
+  shopping_mall:{ label: 'Shopping',    overpass: '["shop"="mall"]' },
+  lodging:      { label: 'Hotels',      overpass: '["tourism"="hotel"]' },
+  gym:          { label: 'Gyms',        overpass: '["leisure"="fitness_centre"]' }
 };
 let currentFilter = 'all';
 
-/* ---------- UI refs ---------- */
-const mapEl      = document.getElementById('map');
-const listEl     = document.getElementById('places-list');
-const chipsEl    = document.getElementById('chips');
-const searchEl   = document.getElementById('search-input');
+/* ---------- DOM refs ---------- */
+const mapEl    = document.getElementById('map');
+const listEl   = document.getElementById('places-list');
+const chipsEl  = document.getElementById('chips');
+const searchEl = document.getElementById('search-input');
 
-/* ---------- build chips ---------- */
-Object.entries(FILTERS).forEach(([key,{label}])=>{
-  const btn=document.createElement('button');
-  btn.textContent=label;
-  btn.dataset.filter=key;
-  btn.className='chip';
-  btn.onclick=()=>{currentFilter=key;highlightChip();fetchPlaces();};
+/* ---------- build category chips ---------- */
+Object.entries(FILTERS).forEach(([k, { label }]) => {
+  const btn = document.createElement('button');
+  btn.textContent   = label;
+  btn.dataset.filter = k;
+  btn.className     = 'chip';
+  btn.onclick       = () => {
+    currentFilter = k;
+    highlightChip();
+    fetchPlaces();
+  };
   chipsEl.appendChild(btn);
 });
-function highlightChip(){
-  chipsEl.querySelectorAll('.chip').forEach(btn=>{
-    btn.classList.toggle('chip--active',btn.dataset.filter===currentFilter);
-  });
+function highlightChip() {
+  chipsEl.querySelectorAll('.chip').forEach(btn =>
+    btn.classList.toggle('chip--active', btn.dataset.filter === currentFilter));
 }
 highlightChip();
 
-/* ---------- Leaflet ---------- */
-const map = L.map('map').setView([0,0],13);
+/* ---------- Leaflet map ---------- */
+const map = L.map('map').setView([40.7128, -74.0060], 13);          // NYC fallback
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  {attribution:'© OpenStreetMap'})
-  .addTo(map);
-const markerLayer=L.layerGroup().addTo(map);
+            { attribution: '© OpenStreetMap' }).addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
 
-/* ---------- helpers ---------- */
-const MSG=(txt)=>{listEl.innerHTML=`<p class="p-4 text-gray-500">${txt}</p>`;};
-const radius = 1000;                        // m
-const dDeg   = radius/111000;               // ≈ deg
+/* ---------- UI helper ---------- */
+const MSG = txt => { listEl.innerHTML = `<p class="p-4 text-gray-500">${txt}</p>`; };
 
-/* free‑text list filter */
-searchEl.addEventListener('input',()=>{
-  const q=searchEl.value.toLowerCase();
-  listEl.querySelectorAll('[data-name]').forEach(div=>{
-    div.classList.toggle('hidden',!div.dataset.name.includes(q));
-  });
+/* text filter in sidebar list */
+searchEl.addEventListener('input', () => {
+  const q = searchEl.value.toLowerCase();
+  listEl.querySelectorAll('[data-name]').forEach(div =>
+    div.classList.toggle('hidden', !div.dataset.name.includes(q)));
 });
 
-/* ---------- fetch & render ---------- */
-function fetchPlaces(){
-  if(!window.userLoc){MSG('Locating…');return;}
+/* ---------- Overpass query builder ---------- */
+const CORE_TAGS = ['amenity', 'shop', 'leisure', 'tourism', 'craft', 'sport'];
+function buildQuery(bbox) {
+  const named = '["name"~"."]';
+  const b = bbox.join(',');
 
-  const {latitude:lat,longitude:lon}=window.userLoc;
-  const box=[lat-dDeg,lon-dDeg,lat+dDeg,lon+dDeg]; // S,W,N,E
-  const f=FILTERS[currentFilter].overpass;
-  /* only named features */
-  const q=`
-    [out:json][timeout:25];
-    ( node${f}["name"~"."](${box});
-      way${f}["name"~"."](${box});
-      rel${f}["name"~"."](${box});
-      node${f}["brand"~"."](${box});
-      way${f}["brand"~"."](${box});
-      rel${f}["brand"~"."](${box});
-    ); out center 50;`;
-  MSG('Loading…');
+  if (currentFilter !== 'all') {
+    const f = FILTERS[currentFilter].overpass;
+    return `
+      [out:json][timeout:25];
+      (
+        node${f}${named}(${b});
+        way${f}${named}(${b});
+        rel${f}${named}(${b});
+        node${f}["brand"~"."](${b});
+        way${f}["brand"~"."](${b});
+        rel${f}["brand"~"."](${b});
+      );
+      out center 300;
+    `;
+  }
 
-  fetch('https://overpass-api.de/api/interpreter',
-        {method:'POST',body:new URLSearchParams({data:q})})
-    .then(r=>r.json())
-    .then(json=>render(json.elements||[]))
-    .catch(()=>MSG('Error loading data.'));
+  /* 'all' – any POI in CORE_TAGS that has a label */
+  const parts = CORE_TAGS.flatMap(tag => [
+    `node["${tag}"]${named}(${b});`,
+    `way["${tag}"]${named}(${b});`,
+    `rel["${tag}"]${named}(${b});`
+  ]);
+  return `[out:json][timeout:25];(${parts.join('\n')});out center 300;`;
 }
-function render(elems){
-  markerLayer.clearLayers();
-  listEl.innerHTML='';
 
-  const places=elems.map(el=>{
-    const lat=el.lat??el.center?.lat, lon=el.lon??el.center?.lon;
-    const tags=el.tags||{}, name=(tags.name||tags.brand||tags.operator||'').trim();
-    return (lat&&lon&&name)?{lat,lon,name,tags}:null;
+/* ---------- fetch + render logic ---------- */
+let fetchDebounce;
+function scheduleFetch() {
+  clearTimeout(fetchDebounce);
+  fetchDebounce = setTimeout(fetchPlaces, 400);   // 0.4 s debounce
+}
+map.on('moveend', scheduleFetch);                 // load on pan/zoom
+
+function fetchPlaces() {
+  const bounds = map.getBounds();
+  const bbox   = [bounds.getSouth(), bounds.getWest(),
+                  bounds.getNorth(), bounds.getEast()];
+
+  MSG('Loading…');
+  fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    body: new URLSearchParams({ data: buildQuery(bbox) })
+  })
+    .then(r => r.json())
+    .then(j => render(j.elements || []))
+    .catch(() => MSG('Error contacting Overpass 😕'));
+}
+
+function render(elems) {
+  markerLayer.clearLayers();
+  listEl.innerHTML = '';
+
+  /* normalise + dedupe */
+  const seen = new Set();
+  const places = elems.map(el => {
+    const lat  = el.lat  ?? el.center?.lat;
+    const lon  = el.lon  ?? el.center?.lon;
+    const tags = el.tags || {};
+    const name = (tags.name || tags.brand || tags.operator || '').trim();
+    if (!lat || !lon || !name) return null;
+    const id = `${lat.toFixed(5)}|${lon.toFixed(5)}|${name}`;
+    if (seen.has(id)) return null;
+    seen.add(id);
+    return { lat, lon, name, cat: tags.amenity || tags.shop ||
+                                tags.leisure || tags.tourism || '' };
   }).filter(Boolean);
 
-  if(!places.length){MSG('Nothing found 😕');return;}
+  if (!places.length) { MSG('No places here. Zoom out or move the map.'); return; }
 
-  searchEl.value=''; // reset search each refresh
-  places.forEach(({lat,lon,name,tags})=>{
-    /* marker */
-    const m=L.marker([lat,lon]).addTo(markerLayer)
-      .bindPopup(`<strong>${name}</strong><br>${tags.amenity||tags.shop||tags.leisure||''}`);
+  /* reset search filter */
+  searchEl.value = '';
 
-    /* list item */
-    const row=document.createElement('div');
-    row.dataset.name=name.toLowerCase();
-    row.className='list-row';
-    row.innerHTML=`<span>${name}</span>`;
-    row.onclick=()=>{map.setView([lat,lon],17);m.openPopup();};
+  places.forEach(({ lat, lon, name, cat }) => {
+    const m = L.marker([lat, lon]).addTo(markerLayer)
+              .bindPopup(`<strong>${name}</strong><br>${cat}`);
+
+    const row = document.createElement('div');
+    row.dataset.name = name.toLowerCase();
+    row.className    = 'list-row';
+    row.textContent  = name;
+    row.onclick      = () => { map.setView([lat, lon], 17); m.openPopup(); };
     listEl.appendChild(row);
   });
 }
 
-/* ---------- geolocate then start ---------- */
-if('geolocation' in navigator){
+/* ---------- geolocate then kick off first fetch ---------- */
+if ('geolocation' in navigator) {
   navigator.geolocation.getCurrentPosition(
-    pos=>{
-      window.userLoc=pos.coords;
-      map.setView([pos.coords.latitude,pos.coords.longitude],15);
-      L.circle([pos.coords.latitude,pos.coords.longitude],
-               {radius:5,color:'blue'}).addTo(map);
-      fetchPlaces();
+    pos => {
+      map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      L.circle([pos.coords.latitude, pos.coords.longitude],
+               { radius: 5, color: 'blue' }).addTo(map);
+      fetchPlaces();   // first load
     },
-    ()=>{
-      MSG('Location blocked – showing NYC.');
-      map.setView([40.7128,-74.0060],12);
-    }
+    () => fetchPlaces()   // use NYC fallback
   );
-}else{
-  MSG('Geolocation unsupported – showing NYC.');
-  map.setView([40.7128,-74.0060],12);
+} else {
+  fetchPlaces();
 }
