@@ -1,160 +1,177 @@
 // script.js
-/* ---------- category config ---------- */
+/* ---------- categories shown as chips ---------- */
 const FILTERS = {
   all:          { label: 'All',         overpass: '' },
-  restaurant:   { label: 'Restaurants', overpass: '["amenity"="restaurant"]' },
-  cafe:         { label: 'Cafes',       overpass: '["amenity"="cafe"]' },
-  bar:          { label: 'Bars',        overpass: '["amenity"="bar"]' },
-  park:         { label: 'Parks',       overpass: '["leisure"="park"]' },
-  shopping_mall:{ label: 'Shopping',    overpass: '["shop"="mall"]' },
+  food:         { label: 'Food',        overpass: '["amenity"~"restaurant|cafe|fast_food|bar|pub"]' },
+  shop:         { label: 'Shops',       overpass: '["shop"]' },
   lodging:      { label: 'Hotels',      overpass: '["tourism"="hotel"]' },
-  gym:          { label: 'Gyms',        overpass: '["leisure"="fitness_centre"]' }
+  leisure:      { label: 'Leisure',     overpass: '["leisure"]' },
+  culture:      { label: 'Culture',     overpass: '["tourism"~"museum|gallery|attraction"]' },
+  sport:        { label: 'Sports',      overpass: '["sport"]' }
 };
 let currentFilter = 'all';
 
 /* ---------- DOM refs ---------- */
-const mapEl    = document.getElementById('map');
-const listEl   = document.getElementById('places-list');
 const chipsEl  = document.getElementById('chips');
+const listEl   = document.getElementById('places-list');
 const searchEl = document.getElementById('search-input');
 
-/* ---------- build category chips ---------- */
-Object.entries(FILTERS).forEach(([k, { label }]) => {
-  const btn = document.createElement('button');
-  btn.textContent   = label;
-  btn.dataset.filter = k;
-  btn.className     = 'chip';
-  btn.onclick       = () => {
-    currentFilter = k;
-    highlightChip();
-    fetchPlaces();
-  };
-  chipsEl.appendChild(btn);
+/* ---------- category chips ---------- */
+Object.entries(FILTERS).forEach(([key, { label }]) => {
+  const b      = document.createElement('button');
+  b.textContent = label;
+  b.dataset.f   = key;
+  b.className   = 'chip';
+  b.onclick     = () => { currentFilter = key; highlight(); fetchPlaces(); };
+  chipsEl.appendChild(b);
 });
-function highlightChip() {
-  chipsEl.querySelectorAll('.chip').forEach(btn =>
-    btn.classList.toggle('chip--active', btn.dataset.filter === currentFilter));
+function highlight() {
+  chipsEl.querySelectorAll('.chip')
+         .forEach(btn => btn.classList.toggle('chip--active',
+                           btn.dataset.f === currentFilter));
 }
-highlightChip();
+highlight();
 
-/* ---------- Leaflet map ---------- */
-const map = L.map('map').setView([40.7128, -74.0060], 13);          // NYC fallback
+/* ---------- Leaflet ---------- */
+const map = L.map('map').setView([40.7128, -74.006], 14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             { attribution: '© OpenStreetMap' }).addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 
-/* ---------- UI helper ---------- */
-const MSG = txt => { listEl.innerHTML = `<p class="p-4 text-gray-500">${txt}</p>`; };
-
-/* text filter in sidebar list */
+/* ---------- UI helpers ---------- */
+const msg = t => listEl.innerHTML =
+  `<p class="p-4 text-gray-500 italic">${t}</p>`;
 searchEl.addEventListener('input', () => {
   const q = searchEl.value.toLowerCase();
-  listEl.querySelectorAll('[data-name]').forEach(div =>
-    div.classList.toggle('hidden', !div.dataset.name.includes(q)));
+  listEl.querySelectorAll('[data-name]')
+        .forEach(c => c.classList.toggle('hidden',
+                   !c.dataset.name.includes(q)));
 });
 
+/* ---------- “review score” util (from your original) ---------- */
+const scoreOf = t => {
+  const rating = parseFloat(t.rating || 0);          // 0‑5
+  const count  = parseInt(t.review_count || 0, 10);  // absolute #
+  if (rating) return (rating * 20) + (count / 10);
+  if (t.stars) return parseInt(t.stars, 10) * 30;    // hotels
+  if (t.michelin || t.gault_millau) return 85;       // guide listed
+  if (t.tourism === 'attraction') return 90;         // major sight
+  return 0;
+};
+
 /* ---------- Overpass query builder ---------- */
-const CORE_TAGS = ['amenity', 'shop', 'leisure', 'tourism', 'craft', 'sport'];
+const POI_TAGS = [
+  'amenity', 'shop', 'leisure', 'tourism', 'sport',
+  'craft', 'office', 'historic', 'attraction'
+];
 function buildQuery(bbox) {
   const named = '["name"~"."]';
-  const b = bbox.join(',');
-
-  if (currentFilter !== 'all') {
-    const f = FILTERS[currentFilter].overpass;
-    return `
-      [out:json][timeout:25];
-      (
-        node${f}${named}(${b});
-        way${f}${named}(${b});
-        rel${f}${named}(${b});
-        node${f}["brand"~"."](${b});
-        way${f}["brand"~"."](${b});
-        rel${f}["brand"~"."](${b});
-      );
-      out center 300;
-    `;
-  }
-
-  /* 'all' – any POI in CORE_TAGS that has a label */
-  const parts = CORE_TAGS.flatMap(tag => [
-    `node["${tag}"]${named}(${b});`,
-    `way["${tag}"]${named}(${b});`,
-    `rel["${tag}"]${named}(${b});`
-  ]);
-  return `[out:json][timeout:25];(${parts.join('\n')});out center 300;`;
+  const b     = bbox.join(',');
+  const filter = currentFilter === 'all'
+      ? POI_TAGS.map(tag =>
+          [`node["${tag}"]${named}(${b});`,
+           `way["${tag}"]${named}(${b});`,
+           `rel["${tag}"]${named}(${b});`].join('\n')).join('\n')
+      : (() => {
+          const f = FILTERS[currentFilter].overpass;
+          return [`node${f}${named}(${b});`,
+                  `way${f}${named}(${b});`,
+                  `rel${f}${named}(${b});`].join('\n');
+        })();
+  return `[out:json][timeout:25];(${filter});out center 300;`;
 }
 
-/* ---------- fetch + render logic ---------- */
-let fetchDebounce;
-function scheduleFetch() {
-  clearTimeout(fetchDebounce);
-  fetchDebounce = setTimeout(fetchPlaces, 400);   // 0.4 s debounce
-}
-map.on('moveend', scheduleFetch);                 // load on pan/zoom
+/* ---------- throttled fetch ---------- */
+let lastCall = 0, lastZoom = map.getZoom(), lastCenter = map.getCenter();
+const THRESH_METERS = 250,  DEBOUNCE_MS = 2000;
+let timer;
 
+map.on('moveend', () => {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    const center = map.getCenter();
+    const dist   = map.distance(center, lastCenter);
+    const zoom   = map.getZoom();
+    if (dist > THRESH_METERS || Math.abs(zoom - lastZoom) >= 1) {
+      lastCenter = center; lastZoom = zoom;
+      fetchPlaces();
+    }
+  }, DEBOUNCE_MS);
+});
+
+/* ---------- fetch + render ---------- */
 function fetchPlaces() {
-  const bounds = map.getBounds();
-  const bbox   = [bounds.getSouth(), bounds.getWest(),
-                  bounds.getNorth(), bounds.getEast()];
+  const b = map.getBounds();
+  const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()];
+  msg('Loading POIs…');
 
-  MSG('Loading…');
   fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
     body: new URLSearchParams({ data: buildQuery(bbox) })
   })
     .then(r => r.json())
-    .then(j => render(j.elements || []))
-    .catch(() => MSG('Error contacting Overpass 😕'));
+    .then(({ elements }) => render(elements || []))
+    .catch(() => msg('Overpass did not respond (rate‑limited).'));
 }
 
 function render(elems) {
   markerLayer.clearLayers();
   listEl.innerHTML = '';
 
-  /* normalise + dedupe */
   const seen = new Set();
   const places = elems.map(el => {
-    const lat  = el.lat  ?? el.center?.lat;
-    const lon  = el.lon  ?? el.center?.lon;
+    const lat  = el.lat ?? el.center?.lat;
+    const lon  = el.lon ?? el.center?.lon;
     const tags = el.tags || {};
-    const name = (tags.name || tags.brand || tags.operator || '').trim();
+    const name = (tags.name || '').trim();
     if (!lat || !lon || !name) return null;
-    const id = `${lat.toFixed(5)}|${lon.toFixed(5)}|${name}`;
+
+    const quality = scoreOf(tags);
+    if (quality < 80) return null;                // quality gate
+
+    const id = `${lat.toFixed(5)}|${lon.toFixed(5)}`;
     if (seen.has(id)) return null;
     seen.add(id);
-    return { lat, lon, name, cat: tags.amenity || tags.shop ||
-                                tags.leisure || tags.tourism || '' };
+
+    return { lat, lon, name, tags, quality };
   }).filter(Boolean);
 
-  if (!places.length) { MSG('No places here. Zoom out or move the map.'); return; }
-
-  /* reset search filter */
+  if (!places.length) { msg('No high‑quality places here.'); return; }
   searchEl.value = '';
 
-  places.forEach(({ lat, lon, name, cat }) => {
+  places.forEach(({ lat, lon, name, tags, quality }) => {
+    /* marker */
     const m = L.marker([lat, lon]).addTo(markerLayer)
-              .bindPopup(`<strong>${name}</strong><br>${cat}`);
+              .bindPopup(`<strong>${name}</strong><br>${tags.amenity || tags.shop ||
+                         tags.leisure || tags.tourism || ''}`);
 
-    const row = document.createElement('div');
-    row.dataset.name = name.toLowerCase();
-    row.className    = 'list-row';
-    row.textContent  = name;
-    row.onclick      = () => { map.setView([lat, lon], 17); m.openPopup(); };
-    listEl.appendChild(row);
+    /* sidebar card */
+    const card = document.createElement('div');
+    card.dataset.name = name.toLowerCase();
+    card.className    = 'card';
+
+    card.innerHTML = `
+      <div class="flex justify-between items-center mb-1">
+        <span class="font-semibold">${name}</span>
+        <span class="text-xs bg-gray-200 px-2 py-0.5 rounded">
+          ${tags.amenity || tags.shop || tags.leisure || tags.tourism || 'POI'}
+        </span>
+      </div>
+      <div class="text-sm text-gray-600 mb-2">
+        ${tags.rating ? `⭐ ${tags.rating}` :
+          tags.stars ? `★ ${tags.stars}` :
+          tags.michelin ? 'Michelin‑listed' :
+          tags.tourism === 'attraction' ? 'Major attraction' : ''}
+      </div>
+      <button class="info-btn">View</button>`;
+    card.querySelector('.info-btn').onclick =
+      () => { map.setView([lat, lon], 17); m.openPopup(); };
+    listEl.appendChild(card);
   });
 }
 
-/* ---------- geolocate then kick off first fetch ---------- */
-if ('geolocation' in navigator) {
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      map.setView([pos.coords.latitude, pos.coords.longitude], 15);
-      L.circle([pos.coords.latitude, pos.coords.longitude],
-               { radius: 5, color: 'blue' }).addTo(map);
-      fetchPlaces();   // first load
-    },
-    () => fetchPlaces()   // use NYC fallback
-  );
-} else {
-  fetchPlaces();
-}
+/* ---------- first load ---------- */
+navigator.geolocation.getCurrentPosition(
+  pos => { map.setView([pos.coords.latitude, pos.coords.longitude], 15); fetchPlaces(); },
+  ()  => fetchPlaces()
+);
