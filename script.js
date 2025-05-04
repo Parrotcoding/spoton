@@ -1,94 +1,113 @@
 // script.js
-/* ----- category filters (amenity / leisure / shop / tourism) ----- */
-const filters = {
-  all:      '',
-  restaurant:'["amenity"="restaurant"]',
-  cafe:     '["amenity"="cafe"]',
-  bar:      '["amenity"="bar"]',
-  park:     '["leisure"="park"]',
-  shopping_mall:'["shop"="mall"]',
-  lodging:  '["tourism"="hotel"]',
-  gym:      '["leisure"="fitness_centre"]'
+/* ---------- config ---------- */
+const FILTERS = {
+  all:      {label:'All',         overpass:''},
+  restaurant:{label:'Restaurants',overpass:'["amenity"="restaurant"]'},
+  cafe:     {label:'Cafes',       overpass:'["amenity"="cafe"]'},
+  bar:      {label:'Bars',        overpass:'["amenity"="bar"]'},
+  park:     {label:'Parks',       overpass:'["leisure"="park"]'},
+  shopping_mall:{label:'Shopping',overpass:'["shop"="mall"]'},
+  lodging:  {label:'Hotels',      overpass:'["tourism"="hotel"]'},
+  gym:      {label:'Gyms',        overpass:'["leisure"="fitness_centre"]'}
 };
+let currentFilter = 'all';
 
-/* ----- Leaflet setup ----- */
-const map = L.map('map').setView([0,0], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  { attribution: '© OpenStreetMap' }
-).addTo(map);
-const markerLayer = L.layerGroup().addTo(map);
-
-/* ----- DOM helpers ----- */
+/* ---------- UI refs ---------- */
+const mapEl      = document.getElementById('map');
 const listEl     = document.getElementById('places-list');
-const categoryEl = document.getElementById('category-select');
-categoryEl.addEventListener('change', fetchPlaces);
+const chipsEl    = document.getElementById('chips');
+const searchEl   = document.getElementById('search-input');
 
-function showMsg(msg){
-  listEl.innerHTML = `<p class="p-4 text-gray-500">${msg}</p>`;
+/* ---------- build chips ---------- */
+Object.entries(FILTERS).forEach(([key,{label}])=>{
+  const btn=document.createElement('button');
+  btn.textContent=label;
+  btn.dataset.filter=key;
+  btn.className='chip';
+  btn.onclick=()=>{currentFilter=key;highlightChip();fetchPlaces();};
+  chipsEl.appendChild(btn);
+});
+function highlightChip(){
+  chipsEl.querySelectorAll('.chip').forEach(btn=>{
+    btn.classList.toggle('chip--active',btn.dataset.filter===currentFilter);
+  });
 }
+highlightChip();
 
-/* ----- fetch named places from Overpass ----- */
+/* ---------- Leaflet ---------- */
+const map = L.map('map').setView([0,0],13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'© OpenStreetMap'})
+  .addTo(map);
+const markerLayer=L.layerGroup().addTo(map);
+
+/* ---------- helpers ---------- */
+const MSG=(txt)=>{listEl.innerHTML=`<p class="p-4 text-gray-500">${txt}</p>`;};
+const radius = 1000;                        // m
+const dDeg   = radius/111000;               // ≈ deg
+
+/* free‑text list filter */
+searchEl.addEventListener('input',()=>{
+  const q=searchEl.value.toLowerCase();
+  listEl.querySelectorAll('[data-name]').forEach(div=>{
+    div.classList.toggle('hidden',!div.dataset.name.includes(q));
+  });
+});
+
+/* ---------- fetch & render ---------- */
 function fetchPlaces(){
-  if(!window.userLoc){ showMsg('Locating you…'); return; }
+  if(!window.userLoc){MSG('Locating…');return;}
 
-  const {latitude:lat, longitude:lon} = window.userLoc;
-  const radius = 1000;          // m
-  const dDeg   = radius/111000; // ≈deg
-  const box    = [lat-dDeg, lon-dDeg, lat+dDeg, lon+dDeg]; // S,W,N,E
-  const f      = filters[categoryEl.value]??'';
-
-  /* only features WITH a name or brand/operator */
-  const nameFilter = '["name"~"."]';
-  const altName    = '["brand"~"."]';
-  const query = `
+  const {latitude:lat,longitude:lon}=window.userLoc;
+  const box=[lat-dDeg,lon-dDeg,lat+dDeg,lon+dDeg]; // S,W,N,E
+  const f=FILTERS[currentFilter].overpass;
+  /* only named features */
+  const q=`
     [out:json][timeout:25];
-    (
-      node${f}${nameFilter}(${box});
-      way${f}${nameFilter}(${box});
-      rel${f}${nameFilter}(${box});
-      node${f}${altName}(${box});
-      way${f}${altName}(${box});
-      rel${f}${altName}(${box});
-    );
-    out center 50;
-  `;
+    ( node${f}["name"~"."](${box});
+      way${f}["name"~"."](${box});
+      rel${f}["name"~"."](${box});
+      node${f}["brand"~"."](${box});
+      way${f}["brand"~"."](${box});
+      rel${f}["brand"~"."](${box});
+    ); out center 50;`;
+  MSG('Loading…');
 
-  showMsg('Loading nearby places…');
   fetch('https://overpass-api.de/api/interpreter',
-        {method:'POST', body:new URLSearchParams({data:query})})
+        {method:'POST',body:new URLSearchParams({data:q})})
     .then(r=>r.json())
-    .then(json=>renderPlaces(json.elements||[]))
-    .catch(()=>showMsg('Could not load data 😕'));
+    .then(json=>render(json.elements||[]))
+    .catch(()=>MSG('Error loading data.'));
 }
-
-function renderPlaces(elems){
+function render(elems){
   markerLayer.clearLayers();
   listEl.innerHTML='';
 
-  /* normalise + discard entries still lacking a recognisable label */
-  const places = elems.map(el=>{
-    const lat = el.lat??el.center?.lat;
-    const lon = el.lon??el.center?.lon;
-    const tags = el.tags||{};
-    const name = tags.name||tags.brand||tags.operator;
-    return (lat&&lon&&name)? {lat,lon,name,raw:tags}:null;
+  const places=elems.map(el=>{
+    const lat=el.lat??el.center?.lat, lon=el.lon??el.center?.lon;
+    const tags=el.tags||{}, name=(tags.name||tags.brand||tags.operator||'').trim();
+    return (lat&&lon&&name)?{lat,lon,name,tags}:null;
   }).filter(Boolean);
 
-  if(!places.length){ showMsg('No named places here.'); return; }
+  if(!places.length){MSG('Nothing found 😕');return;}
 
-  places.forEach(({lat,lon,name,raw})=>{
+  searchEl.value=''; // reset search each refresh
+  places.forEach(({lat,lon,name,tags})=>{
+    /* marker */
     const m=L.marker([lat,lon]).addTo(markerLayer)
-            .bindPopup(`<strong>${name}</strong><br>${raw.amenity||raw.shop||raw.leisure||''}`);
+      .bindPopup(`<strong>${name}</strong><br>${tags.amenity||tags.shop||tags.leisure||''}`);
 
-    const div=document.createElement('div');
-    div.className='px-4 py-2 border-b hover:bg-gray-100 cursor-pointer';
-    div.textContent=name;
-    div.onclick=()=>{ map.setView([lat,lon],17); m.openPopup(); };
-    listEl.appendChild(div);
+    /* list item */
+    const row=document.createElement('div');
+    row.dataset.name=name.toLowerCase();
+    row.className='list-row';
+    row.innerHTML=`<span>${name}</span>`;
+    row.onclick=()=>{map.setView([lat,lon],17);m.openPopup();};
+    listEl.appendChild(row);
   });
 }
 
-/* ----- get user location, then go ----- */
+/* ---------- geolocate then start ---------- */
 if('geolocation' in navigator){
   navigator.geolocation.getCurrentPosition(
     pos=>{
@@ -99,11 +118,11 @@ if('geolocation' in navigator){
       fetchPlaces();
     },
     ()=>{
-      showMsg('Location denied, centering on NYC.');    // fallback
+      MSG('Location blocked – showing NYC.');
       map.setView([40.7128,-74.0060],12);
     }
   );
 }else{
-  showMsg('Geolocation not supported; centering on NYC.');
+  MSG('Geolocation unsupported – showing NYC.');
   map.setView([40.7128,-74.0060],12);
 }
