@@ -1,24 +1,21 @@
 /* styles.css */
-html, body, #map { height: 100%; }
-#map             { min-height: 300px; }
+html,body,#map { height:100%; }
+#map           { min-height:300px; }
 
-/* category chip */
-.chip {
+/* chips */
+.chip{
   @apply px-3 py-1 rounded-full text-sm border border-gray-300 bg-gray-50
-          hover:bg-blue-50 transition cursor-pointer;
+          hover:bg-blue-50 cursor-pointer transition;
 }
-.chip--active {
+.chip--active{
   @apply bg-blue-600 text-white border-blue-600;
 }
 
-/* list rows */
-.list-row {
-  @apply px-4 py-2 border-b cursor-pointer hover:bg-gray-100 transition;
+/* sidebar “card” */
+.card{
+  @apply px-4 py-3 border-b hover:bg-gray-100 transition;
 }
-.hidden { display: none; }
-
-/* nicer thin scrollbar (Chromium/WebKit) */
-#places-list::-webkit-scrollbar     { width: 6px; }
-#places-list::-webkit-scrollbar-thumb {
-  background: #d1d5db; border-radius: 3px;
+.info-btn{
+  @apply text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded;
 }
+.hidden{display:none;}
