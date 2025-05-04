@@ -1,0 +1,4 @@
+/* styles.css */
+/* keep the map tall enough even on tiny screens */
+html, body, #map { height: 100%; }
+#map             { min-height: 50vh; }
