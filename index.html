@@ -11,31 +11,39 @@
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style>@import url('styles.css');</style>
+
+  <!-- Local tweaks -->
+  <link rel="stylesheet" href="styles.css" />
 </head>
+<body class="h-screen w-screen overflow-hidden bg-gray-100">
 
-<body class="bg‑gray‑100 flex flex-col min-h-screen">
-  <!-- top bar -->
-  <header class="bg-white shadow p-4 flex items-center gap-4">
-    <h1 class="text-lg sm:text-xl font-semibold">PlaceFinder</h1>
+  <!-- ======= GRID  ======= -->
+  <div class="h-full w-full grid lg:grid-cols-[330px_1fr] grid-rows-[auto_1fr] lg:grid-rows-1">
 
-    <select id="category-select" class="border rounded px-2 py-1 flex-1 max-w-xs">
-      <option value="all">All Places</option>
-      <option value="restaurant">Restaurants</option>
-      <option value="cafe">Cafes</option>
-      <option value="bar">Bars</option>
-      <option value="park">Parks</option>
-      <option value="shopping_mall">Shopping</option>
-      <option value="lodging">Hotels</option>
-      <option value="gym">Gyms</option>
-    </select>
-  </header>
+    <!-- ======= SIDEBAR ======= -->
+    <aside class="bg-white shadow-lg flex flex-col lg:row-span-1 row-span-2">
+      <!-- header -->
+      <header class="p-4 border-b">
+        <h1 class="text-2xl font-semibold mb-2">PlaceFinder</h1>
 
-  <!-- map + list -->
-  <main class="flex-1 flex flex-col">
-    <div id="map" class="flex-1"></div>
-    <section id="places-list" class="bg-white shadow-inner max-h-60 overflow-y-auto"></section>
-  </main>
+        <!-- search -->
+        <input id="search-input"
+               placeholder="Search…"
+               class="w-full border rounded px-3 py-1 focus:outline-none focus:ring" />
+      </header>
+
+      <!-- category chips -->
+      <div id="chips" class="px-4 py-2 flex flex-wrap gap-2 border-b"></div>
+
+      <!-- results list -->
+      <section id="places-list" class="flex-1 overflow-y-auto"></section>
+    </aside>
+
+    <!-- ======= MAP ======= -->
+    <main class="row-start-1 col-start-1 lg:row-start-auto lg:col-start-auto lg:row-span-1 lg:col-span-1">
+      <div id="map" class="h-full w-full"></div>
+    </main>
+  </div>
 
   <!-- libs & logic -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
