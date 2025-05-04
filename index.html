@@ -1,0 +1,50 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PlaceFinder – Discover Nearby Spots</title>
+
+  <!-- Tailwind (utility classes only, via CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <style>@import url('styles.css');</style>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex flex-col">
+  <!-- top bar -->
+  <header class="bg-white shadow-md p-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">PlaceFinder</h1>
+
+    <!-- simple category filter -->
+    <select id="category-select" class="border rounded px-2 py-1">
+      <option value="all">All Places</option>
+      <option value="restaurant">Restaurants</option>
+      <option value="cafe">Cafes</option>
+      <option value="bar">Bars</option>
+      <option value="park">Parks</option>
+      <option value="shopping_mall">Shopping</option>
+      <option value="lodging">Hotels</option>
+      <option value="gym">Gyms</option>
+    </select>
+  </header>
+
+  <!-- map & list -->
+  <main class="flex-1 flex flex-col">
+    <div id="map" class="flex-1"></div>
+
+    <!-- results list -->
+    <section id="places-list"
+             class="bg-white shadow-inner max-h-60 overflow-y-auto">
+      <!-- items injected by script.js -->
+    </section>
+  </main>
+
+  <!-- libraries & main logic -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="script.js" defer></script>
+</body>
+</html>
